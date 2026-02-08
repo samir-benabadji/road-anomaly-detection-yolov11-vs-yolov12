@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Datasets (downloaded and generated locally)
+data/train/
+data/val/
+data/test/
+data/individual/
+data/*.yaml
+SVRDD_dataset/
+extraImagesForSVRDDPostLearning/
+*.zip
+
+# Training outputs (kept locally, not versioned)
+results/
+runs/
+
+# Project artefacts not published
+memoire/
+powerpoint/
+outputProjectInfo/
+
+# Editor / tooling
+.claude/
+.vscode/
+.idea/
+nul
