@@ -1,0 +1,68 @@
+# YOLO12-L P2 Detection Head Ablation Variant
+# =============================================
+# Modification: Added 4th detection head at P2/4 (stride 4)
+# Purpose: Improve detection of small/thin road defects (cracks) on SVRDD dataset.
+#
+# Base: yolo12.yaml (L scale: depth=1.00, width=1.00, max_channels=512)
+# Changes:
+#   - Extended top-down path: P3 -> P2 (upsample + concat backbone P2 + A2C2f)
+#   - Extended bottom-up path: P2 -> P3 (conv stride 2 + concat + A2C2f)
+#   - Detection heads: P2/4, P3/8, P4/16, P5/32 (was P3, P4, P5)
+#
+# Original YOLO12-L: 488 layers, 26.45M params, 89.7 GFLOPs, 3 detection heads
+# This variant:      ~580 layers, ~29M params, ~110 GFLOPs, 4 detection heads (estimated)
+
+# Parameters
+nc: 80 # number of classes (overridden by data.yaml at training time)
+scales:
+  l: [1.00, 1.00, 512]
+
+# YOLO12 Backbone (unchanged from standard YOLO12)
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, Conv, [64, 3, 2]]             # 0-P1/2
+  - [-1, 1, Conv, [128, 3, 2]]            # 1-P2/4
+  - [-1, 2, C3k2, [256, False, 0.25]]     # 2 (P2 features - used by new P2 head)
+  - [-1, 1, Conv, [256, 3, 2]]            # 3-P3/8
+  - [-1, 2, C3k2, [512, False, 0.25]]     # 4 (P3 features)
+  - [-1, 1, Conv, [512, 3, 2]]            # 5-P4/16
+  - [-1, 4, A2C2f, [512, True, 4]]        # 6 (P4 features)
+  - [-1, 1, Conv, [1024, 3, 2]]           # 7-P5/32
+  - [-1, 4, A2C2f, [1024, True, 1]]       # 8 (P5 features)
+
+# YOLO12 Head with P2 detection (modified FPN)
+head:
+  # === Top-down path (upsampling) ===
+  # P5 -> P4
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]       # 9
+  - [[-1, 6], 1, Concat, [1]]                          # 10 - cat backbone P4
+  - [-1, 2, A2C2f, [512, False, -1]]                   # 11 (P4 fused)
+
+  # P4 -> P3
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]       # 12
+  - [[-1, 4], 1, Concat, [1]]                          # 13 - cat backbone P3
+  - [-1, 2, A2C2f, [256, False, -1]]                   # 14 (P3 fused)
+
+  # P3 -> P2 ** NEW **
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]       # 15
+  - [[-1, 2], 1, Concat, [1]]                          # 16 - cat backbone P2
+  - [-1, 2, A2C2f, [128, False, -1]]                   # 17 (P2 fused) ** NEW P2 output **
+
+  # === Bottom-up path (downsampling) ===
+  # P2 -> P3 ** NEW **
+  - [-1, 1, Conv, [128, 3, 2]]                         # 18
+  - [[-1, 14], 1, Concat, [1]]                         # 19 - cat P3 fused
+  - [-1, 2, A2C2f, [256, False, -1]]                   # 20 (P3 final)
+
+  # P3 -> P4
+  - [-1, 1, Conv, [256, 3, 2]]                         # 21
+  - [[-1, 11], 1, Concat, [1]]                         # 22 - cat P4 fused
+  - [-1, 2, A2C2f, [512, False, -1]]                   # 23 (P4 final)
+
+  # P4 -> P5
+  - [-1, 1, Conv, [512, 3, 2]]                         # 24
+  - [[-1, 8], 1, Concat, [1]]                          # 25 - cat backbone P5
+  - [-1, 2, C3k2, [1024, True]]                        # 26 (P5 final)
+
+  # Detect on 4 scales: P2/4, P3/8, P4/16, P5/32
+  - [[17, 20, 23, 26], 1, Detect, [nc]]                # 27 ** 4 heads instead of 3 **
